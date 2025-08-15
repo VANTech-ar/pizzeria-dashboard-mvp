@@ -292,9 +292,10 @@ async def obtener_pedidos():
     """Obtener todos los pedidos activos"""
     try:
         conn = get_db_connection()
+        schema = get_db_schema()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 p.id,
                 p.numero_pedido,
@@ -310,7 +311,7 @@ async def obtener_pedidos():
                 p.notas_internas,
                 p.created_at,
                 EXTRACT(EPOCH FROM (NOW() - p.created_at))/60 as minutos_transcurridos
-            FROM pedidos p 
+            FROM {schema}.pedidos p 
             WHERE p.estado IN ('pendiente', 'preparando', 'listo')
             ORDER BY p.created_at DESC
         """)
