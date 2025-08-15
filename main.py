@@ -227,6 +227,35 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Servir archivos estáticos
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Modificar o agregar la ruta principal:
+@app.get("/", response_class=HTMLResponse)
+async def dashboard():
+    """Servir el dashboard principal"""
+    try:
+        return FileResponse("static/index.html")
+    except FileNotFoundError:
+        return HTMLResponse("""
+        <h1>🍕 Pizzería Dashboard</h1>
+        <p><strong>Error:</strong> No se encontró el archivo static/index.html</p>
+        <p>Asegúrate de crear la carpeta 'static' y el archivo 'index.html' dentro.</p>
+        <div style="margin: 20px 0; padding: 15px; background: #f0f0f0; border-radius: 8px;">
+            <h3>📁 Estructura necesaria:</h3>
+            <pre>
+pizzeria-dashboard-python/
+├── main.py
+├── requirements.txt
+└── static/
+    └── index.html  ← CREAR ESTE ARCHIVO
+            </pre>
+        </div>
+        <p><a href="/api/health">🔍 Ver API Health Check</a></p>
+        <p><a href="/api/pedidos">📋 Ver Pedidos API</a></p>
+        """)
+
+
 # Configurar CORS
 app.add_middleware(
     CORSMiddleware,

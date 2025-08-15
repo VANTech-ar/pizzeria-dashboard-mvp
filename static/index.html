@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard de Pedidos</title>
+    <title>Dashboard de Pedidos - Pizzería</title>
     <style>
         * {
             margin: 0;
@@ -37,6 +37,26 @@
         .header h1 {
             font-size: 2.5rem;
             margin-bottom: 10px;
+        }
+        
+        .connection-status {
+            padding: 15px;
+            margin: 20px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .status-connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
         }
         
         .stats {
@@ -129,13 +149,13 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.15);
         }
         
-        .order-card.pending { border-left-color: #ff9800; }
-        .order-card.preparing { border-left-color: #2196f3; }
-        .order-card.ready { border-left-color: #4caf50; }
+        .order-card.pendiente { border-left-color: #ff9800; }
+        .order-card.preparando { border-left-color: #2196f3; }
+        .order-card.listo { border-left-color: #4caf50; }
         
         .order-header {
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 15px;
             flex-wrap: wrap;
@@ -162,13 +182,9 @@
             letter-spacing: 1px;
         }
         
-        .status-pending { background: #fff3cd; color: #856404; }
-        .status-preparing { background: #d1ecf1; color: #0c5460; }
-        .status-ready { background: #d4edda; color: #155724; }
-        
-        .order-details {
-            margin: 15px 0;
-        }
+        .status-pendiente { background: #fff3cd; color: #856404; }
+        .status-preparando { background: #d1ecf1; color: #0c5460; }
+        .status-listo { background: #d4edda; color: #155724; }
         
         .customer-info {
             display: flex;
@@ -227,12 +243,6 @@
             border-top: 2px solid #eee;
         }
         
-        .total-label {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #333;
-        }
-        
         .total-amount {
             font-size: 1.4rem;
             font-weight: bold;
@@ -257,17 +267,17 @@
             min-width: 120px;
         }
         
-        .btn-preparing {
+        .btn-preparando {
             background: #2196f3;
             color: white;
         }
         
-        .btn-ready {
+        .btn-listo {
             background: #4caf50;
             color: white;
         }
         
-        .btn-delivered {
+        .btn-entregado {
             background: #666;
             color: white;
         }
@@ -303,6 +313,21 @@
         
         .refresh-btn:hover {
             transform: scale(1.1);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px;
+            border: 1px solid #f5c6cb;
         }
         
         @media (max-width: 768px) {
@@ -344,21 +369,25 @@
             <p>Gestiona tus órdenes en tiempo real</p>
         </div>
         
+        <div id="connectionStatus" class="connection-status">
+            <span id="statusText">🔄 Conectando con la API...</span>
+        </div>
+        
         <div class="stats">
             <div class="stat-card">
-                <div class="stat-number pending" id="pendingCount">3</div>
+                <div class="stat-number pending" id="pendingCount">-</div>
                 <div class="stat-label">Pendientes</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number preparing" id="preparingCount">2</div>
+                <div class="stat-number preparing" id="preparingCount">-</div>
                 <div class="stat-label">En Preparación</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number ready" id="readyCount">1</div>
+                <div class="stat-number ready" id="readyCount">-</div>
                 <div class="stat-label">Listos</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number total" id="totalRevenue">$45,230</div>
+                <div class="stat-number total" id="totalRevenue">$-</div>
                 <div class="stat-label">Total Hoy</div>
             </div>
         </div>
@@ -368,13 +397,13 @@
             
             <div class="filters">
                 <button class="filter-btn active" onclick="filterOrders('all')">Todas</button>
-                <button class="filter-btn" onclick="filterOrders('pending')">Pendientes</button>
-                <button class="filter-btn" onclick="filterOrders('preparing')">En Preparación</button>
-                <button class="filter-btn" onclick="filterOrders('ready')">Listas</button>
+                <button class="filter-btn" onclick="filterOrders('pendiente')">Pendientes</button>
+                <button class="filter-btn" onclick="filterOrders('preparando')">En Preparación</button>
+                <button class="filter-btn" onclick="filterOrders('listo')">Listas</button>
             </div>
             
-            <div class="orders-grid" id="ordersContainer">
-                <!-- Las órdenes se cargarán aquí -->
+            <div id="ordersContainer" class="orders-grid">
+                <div class="loading">🔄 Cargando pedidos...</div>
             </div>
         </div>
     </div>
@@ -385,82 +414,128 @@
 
     <script>
         // Configuración de API
-        const API_BASE_URL = window.location.hostname === 'localhost' 
-            ? 'http://localhost:3000/api' 
-            : '/api';
-        
+        const API_BASE_URL = '/api';
         let orders = [];
+        let allOrders = [];
+        
+        // Estado de conexión
+        let isConnected = false;
+        
+        // Función para mostrar estado de conexión
+        function updateConnectionStatus(connected, message = '') {
+            const statusElement = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('statusText');
+            
+            if (connected) {
+                statusElement.className = 'connection-status status-connected';
+                statusText.textContent = '✅ Conectado a PostgreSQL - Datos en tiempo real';
+                isConnected = true;
+            } else {
+                statusElement.className = 'connection-status status-error';
+                statusText.textContent = `❌ Error de conexión: ${message}`;
+                isConnected = false;
+            }
+        }
         
         // Cargar pedidos desde API
         async function fetchOrders() {
             try {
+                console.log('🔄 Cargando pedidos desde API...');
                 const response = await fetch(`${API_BASE_URL}/pedidos`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
+                console.log('📦 Datos recibidos:', data);
                 
                 if (data.success) {
-                    orders = data.pedidos.map(pedido => ({
+                    allOrders = data.pedidos.map(pedido => ({
                         id: pedido.numero_pedido,
                         customer: pedido.nombre_cliente,
                         phone: pedido.telefono_cliente,
-                        items: pedido.productos_json,
+                        items: pedido.productos_json || [],
                         total: parseFloat(pedido.total),
                         status: pedido.estado,
-                        time: new Date(pedido.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+                        time: new Date(pedido.created_at).toLocaleTimeString('es-MX', { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                        }),
                         address: pedido.direccion_entrega,
                         minutosTranscurridos: Math.floor(pedido.minutos_transcurridos || 0),
                         notasCliente: pedido.notas_cliente,
-                        notasInternas: pedido.notas_internas
+                        notasInternas: pedido.notas_internas,
+                        subtotal: parseFloat(pedido.subtotal || 0),
+                        costoEnvio: parseFloat(pedido.costo_envio || 0)
                     }));
+                    
+                    orders = [...allOrders];
+                    updateConnectionStatus(true);
+                    return true;
                 } else {
-                    console.error('Error cargando pedidos:', data.error);
-                    // Usar datos de ejemplo si falla la API
-                    orders = getExampleOrders();
+                    throw new Error(data.message || 'Error en la respuesta de la API');
                 }
+                
             } catch (error) {
-                console.error('Error conectando con API:', error);
-                // Usar datos de ejemplo si no hay conexión
+                console.error('❌ Error cargando pedidos:', error);
+                updateConnectionStatus(false, error.message);
+                
+                // Mostrar datos de ejemplo si falla la API
                 orders = getExampleOrders();
+                allOrders = [...orders];
+                return false;
             }
         }
         
-        // Datos de ejemplo para cuando no hay API
+        // Datos de ejemplo para cuando no hay conexión
         function getExampleOrders() {
             return [
                 {
-                    id: "ORD-001",
-                    customer: "María García",
+                    id: "ORD-EJEMPLO",
+                    customer: "Cliente de Ejemplo",
                     phone: "+52 55 1234-5678",
                     items: [
-                        { nombre: "Pizza Margarita Grande", cantidad: 1, precio_unitario: 280, modificaciones: "Extra queso, sin cebolla" },
-                        { nombre: "Coca-Cola", cantidad: 2, precio_unitario: 35, modificaciones: "" }
+                        { nombre: "Pizza Ejemplo", cantidad: 1, precio_unitario: 280, subtotal: 280 }
                     ],
-                    total: 350,
+                    total: 310,
                     status: "pendiente",
                     time: "14:30",
-                    address: "Av. Reforma 123, Col. Centro, CDMX",
+                    address: "Dirección de ejemplo",
                     minutosTranscurridos: 15
-                },
-                {
-                    id: "ORD-002", 
-                    customer: "Carlos López",
-                    phone: "+52 55 9876-5432",
-                    items: [
-                        { nombre: "Pizza Pepperoni Grande", cantidad: 1, precio_unitario: 320, modificaciones: "" }
-                    ],
-                    total: 350,
-                    status: "preparando",
-                    time: "14:15",
-                    address: "Calle Insurgentes 456, Col. Roma Norte, CDMX",
-                    minutosTranscurridos: 30
                 }
             ];
         }
-
+        
+        // Cargar estadísticas
+        async function fetchStats() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/estadisticas`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const stats = data.estadisticas;
+                    document.getElementById('pendingCount').textContent = stats.pendientes || 0;
+                    document.getElementById('preparingCount').textContent = stats.preparando || 0;
+                    document.getElementById('readyCount').textContent = stats.listos || 0;
+                    document.getElementById('totalRevenue').textContent = `$${(stats.ingresos_dia || 0).toFixed(0)}`;
+                }
+            } catch (error) {
+                console.error('Error cargando estadísticas:', error);
+            }
+        }
+        
+        // Renderizar pedidos
         function renderOrders(ordersToRender = orders) {
             const container = document.getElementById('ordersContainer');
             
             if (ordersToRender.length === 0) {
-                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No hay órdenes para mostrar</p>';
+                container.innerHTML = `
+                    <div style="text-align: center; color: #666; padding: 40px;">
+                        <h3>📋 No hay órdenes activas</h3>
+                        <p>Los nuevos pedidos aparecerán aquí automáticamente</p>
+                    </div>
+                `;
                 return;
             }
             
@@ -469,7 +544,7 @@
                     <div class="order-header">
                         <div>
                             <div class="order-id">${order.id}</div>
-                            <div class="order-time">${order.time}</div>
+                            <div class="order-time">${order.time} (${order.minutosTranscurridos} min)</div>
                         </div>
                         <div class="order-status status-${order.status}">
                             ${getStatusText(order.status)}
@@ -489,15 +564,15 @@
                         ${order.items.map(item => `
                             <div class="item">
                                 <div>
-                                    <div class="item-name">${item.quantity}x ${item.name}</div>
-                                    ${item.details ? `<div class="item-details">${item.details}</div>` : ''}
+                                    <div class="item-name">${item.cantidad}x ${item.nombre}</div>
+                                    ${item.modificaciones ? `<div class="item-details">${item.modificaciones}</div>` : ''}
                                 </div>
-                                <div class="item-price">$${item.price * item.quantity}</div>
+                                <div class="item-price">$${(item.subtotal || (item.cantidad * item.precio_unitario)).toFixed(0)}</div>
                             </div>
                         `).join('')}
                         
                         <div class="order-total">
-                            <div class="total-label">Total: <span class="total-amount">$${order.total}</span></div>
+                            <div class="total-amount">Total: $${order.total.toFixed(0)}</div>
                         </div>
                     </div>
                     
@@ -507,37 +582,36 @@
                 </div>
             `).join('');
         }
-
+        
         function getStatusText(status) {
             switch(status) {
-                case 'pending': return 'Pendiente';
-                case 'preparing': return 'En Preparación';
-                case 'ready': return 'Listo';
-                case 'delivered': return 'Entregado';
-                default: return 'Desconocido';
+                case 'pendiente': return 'Pendiente';
+                case 'preparando': return 'En Preparación';
+                case 'listo': return 'Listo';
+                case 'entregado': return 'Entregado';
+                default: return status;
             }
         }
-
+        
         function getActionButtons(status, orderId) {
             switch(status) {
-                case 'pending':
-                    return `<button class="action-btn btn-preparing" onclick="updateOrderStatus('${orderId}', 'preparing')">Comenzar Preparación</button>`;
-                case 'preparing':
-                    return `<button class="action-btn btn-ready" onclick="updateOrderStatus('${orderId}', 'ready')">Marcar como Listo</button>`;
-                case 'ready':
-                    return `<button class="action-btn btn-delivered" onclick="updateOrderStatus('${orderId}', 'delivered')">Marcar como Entregado</button>`;
+                case 'pendiente':
+                    return `<button class="action-btn btn-preparando" onclick="updateOrderStatus('${orderId}', 'preparando')">Comenzar Preparación</button>`;
+                case 'preparando':
+                    return `<button class="action-btn btn-listo" onclick="updateOrderStatus('${orderId}', 'listo')">Marcar como Listo</button>`;
+                case 'listo':
+                    return `<button class="action-btn btn-entregado" onclick="updateOrderStatus('${orderId}', 'entregado')">Marcar como Entregado</button>`;
                 default:
                     return '';
             }
         }
-
+        
+        // Actualizar estado de pedido
         async function updateOrderStatus(orderId, newStatus) {
             try {
-                // Encontrar el pedido por numero_pedido
-                const order = orders.find(o => o.id === orderId);
-                if (!order) return;
+                console.log(`🔄 Actualizando ${orderId} a ${newStatus}`);
                 
-                const response = await fetch(`${API_BASE_URL}/pedidos/${order.id}/estado`, {
+                const response = await fetch(`${API_BASE_URL}/pedidos/${orderId}/estado`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json'
@@ -551,26 +625,15 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    // Actualizar localmente
-                    orders = orders.map(order => 
-                        order.id === orderId ? { ...order, status: newStatus } : order
-                    );
-                    
-                    if (newStatus === 'entregado') {
-                        orders = orders.filter(order => order.id !== orderId);
-                    }
-                    
-                    renderOrders();
-                    updateStats();
-                    
-                    // Mostrar notificación de éxito
-                    showNotification(`✅ Orden ${orderId} actualizada a ${getStatusText(newStatus)}`);
+                    showNotification(`✅ ${data.message}`);
+                    await refreshOrders();
                 } else {
-                    throw new Error(data.error || 'Error actualizando pedido');
+                    throw new Error(data.detail || 'Error actualizando pedido');
                 }
+                
             } catch (error) {
                 console.error('Error actualizando estado:', error);
-                showNotification(`❌ Error actualizando orden ${orderId}: ${error.message}`, 'error');
+                showNotification(`❌ Error actualizando ${orderId}: ${error.message}`, 'error');
             }
         }
         
@@ -585,6 +648,7 @@
                 color: white;
                 font-weight: 500;
                 z-index: 1000;
+                max-width: 400px;
                 animation: slideIn 0.3s ease;
                 background: ${type === 'error' ? '#ff4757' : '#2ed573'};
             `;
@@ -596,56 +660,51 @@
                 notification.remove();
             }, 4000);
         }
-
+        
         function filterOrders(filter) {
             const buttons = document.querySelectorAll('.filter-btn');
             buttons.forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             
             if (filter === 'all') {
-                renderOrders(orders);
+                renderOrders(allOrders);
             } else {
-                const filtered = orders.filter(order => order.status === filter);
+                const filtered = allOrders.filter(order => order.status === filter);
                 renderOrders(filtered);
             }
         }
-
-        function updateStats() {
-            const pending = orders.filter(o => o.status === 'pending').length;
-            const preparing = orders.filter(o => o.status === 'preparing').length;
-            const ready = orders.filter(o => o.status === 'ready').length;
-            
-            document.getElementById('pendingCount').textContent = pending;
-            document.getElementById('preparingCount').textContent = preparing;
-            document.getElementById('readyCount').textContent = ready;
-        }
-
+        
         async function refreshOrders() {
             const refreshBtn = document.querySelector('.refresh-btn');
             refreshBtn.style.transform = 'rotate(360deg)';
             
             await fetchOrders();
+            await fetchStats();
             renderOrders();
-            updateStats();
             
             setTimeout(() => {
                 refreshBtn.style.transform = 'rotate(0deg)';
-                showNotification('🔄 Pedidos actualizados');
+                if (isConnected) {
+                    showNotification('🔄 Datos actualizados desde PostgreSQL');
+                }
             }, 1000);
         }
         
-        // Cargar datos iniciales
+        // Inicializar dashboard
         async function initDashboard() {
+            console.log('🚀 Inicializando dashboard...');
             await fetchOrders();
+            await fetchStats();
             renderOrders();
-            updateStats();
             
             // Auto-refresh cada 30 segundos
             setInterval(async () => {
                 await fetchOrders();
+                await fetchStats();
                 renderOrders();
-                updateStats();
             }, 30000);
+            
+            console.log('✅ Dashboard inicializado');
         }
         
         // Inicializar cuando la página cargue
