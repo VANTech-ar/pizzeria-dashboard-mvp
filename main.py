@@ -333,10 +333,11 @@ async def actualizar_estado_pedido(numero: str, estado_data: ActualizarEstado):
     """Actualizar estado de un pedido"""
     try:
         conn = get_db_connection()
+        schema = get_db_schema()
         cursor = conn.cursor()
         
         # Obtener estado anterior
-        cursor.execute("SELECT estado FROM pedidos WHERE numero_pedido = %s", (numero,))
+        cursor.execute(f"SELECT estado FROM {schema}.pedidos WHERE numero_pedido = %s", (numero,))
         resultado = cursor.fetchone()
         
         if not resultado:
@@ -346,13 +347,13 @@ async def actualizar_estado_pedido(numero: str, estado_data: ActualizarEstado):
         
         # Actualizar pedido
         cursor.execute(
-            "UPDATE pedidos SET estado = %s, updated_at = NOW() WHERE numero_pedido = %s",
+            f"UPDATE {schema}.pedidos SET estado = %s, updated_at = NOW() WHERE numero_pedido = %s",
             (estado_data.estado, numero)
         )
         
         # Registrar en historial
-        cursor.execute("""
-            INSERT INTO historial_pedidos (
+        cursor.execute(f"""
+            INSERT INTO {schema}.historial_pedidos (
                 pedido_id, estado_anterior, estado_nuevo, notas, usuario
             ) 
             SELECT id, %s, %s, %s, %s 
@@ -377,9 +378,10 @@ async def obtener_estadisticas():
     """Obtener estadísticas del día"""
     try:
         conn = get_db_connection()
+        schema = get_db_schema()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 COUNT(*) as total_pedidos,
                 COALESCE(SUM(total), 0) as ingresos_dia,
@@ -388,7 +390,7 @@ async def obtener_estadisticas():
                 COUNT(*) FILTER (WHERE estado = 'preparando') as preparando,
                 COUNT(*) FILTER (WHERE estado = 'listo') as listos,
                 COUNT(*) FILTER (WHERE estado = 'entregado') as entregados
-            FROM pedidos 
+            FROM {schema}.pedidos 
             WHERE DATE(created_at) = CURRENT_DATE
         """)
         
@@ -409,15 +411,16 @@ async def crear_pedido_nuevo(pedido: PedidoNuevo):
     """Crear nuevo pedido (webhook desde n8n)"""
     try:
         conn = get_db_connection()
+        schema = get_db_schema()
         cursor = conn.cursor()
         
         # Generar número de pedido
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 'ORD-' || LPAD(
                 (COALESCE(MAX(CAST(SUBSTRING(numero_pedido FROM 5) AS INTEGER)), 0) + 1)::TEXT, 
                 3, '0'
             ) as nuevo_numero
-            FROM pedidos 
+            FROM {schema}.pedidos 
             WHERE DATE(created_at) = CURRENT_DATE
         """)
         numero_pedido = cursor.fetchone()['nuevo_numero']
@@ -426,8 +429,8 @@ async def crear_pedido_nuevo(pedido: PedidoNuevo):
         productos_json = json.dumps([producto.dict() for producto in pedido.productos])
         
         # Insertar pedido
-        cursor.execute("""
-            INSERT INTO pedidos (
+        cursor.execute(f"""
+            INSERT INTO {schema}.pedidos (
                 numero_pedido, telefono_cliente, nombre_cliente, productos_json,
                 subtotal, costo_envio, total, direccion_entrega, notas_cliente, estado
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'pendiente')
