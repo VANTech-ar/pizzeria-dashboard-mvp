@@ -61,6 +61,9 @@ def get_db_connection():
     except Exception as e:
         print(f"❌ Error conectando a la base de datos: {e}")
         raise e
+def get_db_schema():
+    """Obtener el esquema de la base de datos (por defecto 'public')"""
+    return os.getenv("DB_SCHEMA", "public")
 
 async def initialize_database():
     """Inicializar tablas y datos de ejemplo"""
@@ -70,9 +73,12 @@ async def initialize_database():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Crear tablas
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS productos (
+        schema = get_db_schema()
+        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {schema};")
+        
+        # Crear tablas en el esquema elegido
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.productos (
                 id SERIAL PRIMARY KEY,
                 nombre VARCHAR(255) NOT NULL,
                 descripcion TEXT,
@@ -85,8 +91,8 @@ async def initialize_database():
             );
         """)
         
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS clientes (
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.clientes (
                 id SERIAL PRIMARY KEY,
                 telefono VARCHAR(20) UNIQUE NOT NULL,
                 nombre VARCHAR(255),
@@ -96,11 +102,11 @@ async def initialize_database():
             );
         """)
         
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS pedidos (
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.pedidos (
                 id SERIAL PRIMARY KEY,
                 numero_pedido VARCHAR(20) UNIQUE NOT NULL,
-                cliente_id INTEGER REFERENCES clientes(id),
+                cliente_id INTEGER REFERENCES {schema}.clientes(id),
                 telefono_cliente VARCHAR(20) NOT NULL,
                 nombre_cliente VARCHAR(255),
                 productos_json JSONB NOT NULL,
@@ -117,10 +123,10 @@ async def initialize_database():
             );
         """)
         
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS historial_pedidos (
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.historial_pedidos (
                 id SERIAL PRIMARY KEY,
-                pedido_id INTEGER REFERENCES pedidos(id) ON DELETE CASCADE,
+                pedido_id INTEGER REFERENCES {schema}.pedidos(id) ON DELETE CASCADE,
                 estado_anterior VARCHAR(50),
                 estado_nuevo VARCHAR(50) NOT NULL,
                 usuario VARCHAR(100) DEFAULT 'Sistema',
@@ -130,12 +136,12 @@ async def initialize_database():
         """)
         
         # Verificar si hay productos
-        cursor.execute("SELECT COUNT(*) FROM productos")
+        cursor.execute(f"SELECT COUNT(*) FROM {schema}.productos")
         productos_count = cursor.fetchone()['count']
         
         if productos_count == 0:
             print("📦 Insertando productos de ejemplo...")
-            await insert_sample_data(cursor)
+            await insert_sample_data(cursor, schema)
         
         conn.commit()
         cursor.close()
@@ -147,7 +153,7 @@ async def initialize_database():
         print(f"❌ Error inicializando base de datos: {e}")
         raise e
 
-async def insert_sample_data(cursor):
+async def insert_sample_data(cursor, schema):
     """Insertar datos de ejemplo"""
     productos = [
         ('Pizza Margarita Chica', 'Salsa de tomate, mozzarella, albahaca fresca', 180.00, 'Pizzas'),
@@ -164,7 +170,7 @@ async def insert_sample_data(cursor):
     
     for producto in productos:
         cursor.execute(
-            "INSERT INTO productos (nombre, descripcion, precio, categoria) VALUES (%s, %s, %s, %s)",
+            f"INSERT INTO {schema}.productos (nombre, descripcion, precio, categoria) VALUES (%s, %s, %s, %s)",
             producto
         )
     
@@ -198,8 +204,8 @@ async def insert_sample_data(cursor):
     ]
     
     for pedido in pedidos_ejemplo:
-        cursor.execute("""
-            INSERT INTO pedidos (
+        cursor.execute(f"""
+            INSERT INTO {schema}.pedidos (
                 numero_pedido, telefono_cliente, nombre_cliente, productos_json,
                 subtotal, total, direccion_entrega, estado
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
