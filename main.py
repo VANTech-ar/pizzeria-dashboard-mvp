@@ -358,7 +358,7 @@ async def actualizar_estado_pedido(numero: str, estado_data: ActualizarEstado):
                 pedido_id, estado_anterior, estado_nuevo, notas, usuario
             ) 
             SELECT id, %s, %s, %s, %s 
-            FROM pedidos 
+            FROM {schema}.pedidos 
             WHERE numero_pedido = %s
         """, (estado_anterior, estado_data.estado, estado_data.notas or "", "Dashboard", numero))
         
