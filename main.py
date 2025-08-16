@@ -374,6 +374,94 @@ async def actualizar_estado_pedido(numero: str, estado_data: ActualizarEstado):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error actualizando estado: {str(e)}")
 
+@app.delete("/api/pedidos/{numero}")
+async def cancelar_pedido(numero: str):
+    """Cancelar un pedido"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Verificar que el pedido existe
+        cursor.execute("SELECT estado FROM pedidos WHERE numero_pedido = %s", (numero,))
+        resultado = cursor.fetchone()
+        
+        if not resultado:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        
+        estado_actual = resultado['estado']
+        
+        # No permitir cancelar pedidos ya entregados
+        if estado_actual == 'entregado':
+            raise HTTPException(status_code=400, detail="No se puede cancelar un pedido ya entregado")
+        
+        # Actualizar estado a cancelado
+        cursor.execute(
+            "UPDATE pedidos SET estado = %s, updated_at = NOW() WHERE numero_pedido = %s",
+            ('cancelado', numero)
+        )
+        
+        # Registrar en historial
+        cursor.execute("""
+            INSERT INTO historial_pedidos (
+                pedido_id, estado_anterior, estado_nuevo, notas, usuario
+            ) 
+            SELECT id, %s, %s, %s, %s 
+            FROM pedidos 
+            WHERE numero_pedido = %s
+        """, (estado_actual, 'cancelado', 'Pedido cancelado desde dashboard', 'Dashboard', numero))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": f"Pedido {numero} cancelado exitosamente"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error cancelando pedido: {str(e)}")
+
+@app.get("/api/pedidos-cancelados")
+async def obtener_pedidos_cancelados():
+    """Obtener pedidos cancelados (para auditoria)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                p.id,
+                p.numero_pedido,
+                p.nombre_cliente,
+                p.telefono_cliente,
+                p.productos_json,
+                p.total,
+                p.estado,
+                p.direccion_entrega,
+                p.created_at,
+                p.updated_at
+            FROM pedidos p 
+            WHERE p.estado = 'cancelado'
+            ORDER BY p.updated_at DESC
+            LIMIT 50
+        """)
+        
+        pedidos = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return {
+            "success": True,
+            "pedidos": [dict(pedido) for pedido in pedidos],
+            "total": len(pedidos)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo pedidos cancelados: {str(e)}")
+
 @app.get("/api/estadisticas")
 async def obtener_estadisticas():
     """Obtener estadísticas del día"""
