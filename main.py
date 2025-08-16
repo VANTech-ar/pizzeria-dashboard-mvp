@@ -407,7 +407,7 @@ async def cancelar_pedido(numero: str):
                 pedido_id, estado_anterior, estado_nuevo, notas, usuario
             ) 
             SELECT id, %s, %s, %s, %s 
-            FROM pedidos 
+            FROM {schema}.pedidos 
             WHERE numero_pedido = %s
         """, (estado_actual, 'cancelado', 'Pedido cancelado desde dashboard', 'Dashboard', numero))
         
