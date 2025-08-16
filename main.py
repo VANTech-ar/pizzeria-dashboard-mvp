@@ -379,10 +379,11 @@ async def cancelar_pedido(numero: str):
     """Cancelar un pedido"""
     try:
         conn = get_db_connection()
+        schema = get_db_schema()
         cursor = conn.cursor()
         
         # Verificar que el pedido existe
-        cursor.execute("SELECT estado FROM pedidos WHERE numero_pedido = %s", (numero,))
+        cursor.execute(f"SELECT estado FROM {schema}.pedidos WHERE numero_pedido = %s", (numero,))
         resultado = cursor.fetchone()
         
         if not resultado:
@@ -396,13 +397,13 @@ async def cancelar_pedido(numero: str):
         
         # Actualizar estado a cancelado
         cursor.execute(
-            "UPDATE pedidos SET estado = %s, updated_at = NOW() WHERE numero_pedido = %s",
+            f"UPDATE {schema}.pedidos SET estado = %s, updated_at = NOW() WHERE numero_pedido = %s",
             ('cancelado', numero)
         )
         
         # Registrar en historial
-        cursor.execute("""
-            INSERT INTO historial_pedidos (
+        cursor.execute(f"""
+            INSERT INTO {schema}.historial_pedidos (
                 pedido_id, estado_anterior, estado_nuevo, notas, usuario
             ) 
             SELECT id, %s, %s, %s, %s 
@@ -429,9 +430,10 @@ async def obtener_pedidos_cancelados():
     """Obtener pedidos cancelados (para auditoria)"""
     try:
         conn = get_db_connection()
+        schema = get_db_schema()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 p.id,
                 p.numero_pedido,
@@ -443,7 +445,7 @@ async def obtener_pedidos_cancelados():
                 p.direccion_entrega,
                 p.created_at,
                 p.updated_at
-            FROM pedidos p 
+            FROM {schema}.pedidos p 
             WHERE p.estado = 'cancelado'
             ORDER BY p.updated_at DESC
             LIMIT 50
